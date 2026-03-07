@@ -1,0 +1,36 @@
+{
+  "articles": [
+    {
+      "id": "abc123",
+      "slug": "eagles-win-super-bowl-2026",
+      "headline": "Eagles Win Super Bowl LX in Dominant Fashion",
+      "summary": "The Philadelphia Eagles captured their second Super Bowl title with a commanding 38-17 victory over the Kansas City Chiefs.",
+      "author": "Marcus Hayes",
+      "section": "Sports",
+      "topics": ["Eagles", "NFL", "Super Bowl", "Philadelphia"],
+      "published_at": "2026-02-08T23:45:00-05:00",
+      "updated_at": "2026-02-09T08:30:00-05:00",
+      "canonical_url": "https://www.inquirer.com/eagles/eagles-win-super-bowl-2026.html",
+      "access": "free",
+      "source": "staff",
+      "content_type": "article",
+      "image_url": "https://www.inquirer.com/resizer/abc123.jpg"
+    },
+    {
+      "id": "def456",
+      "slug": "septa-budget-crisis-2026",
+      "headline": "SEPTA Faces $240M Budget Shortfall, Service Cuts Loom",
+      "summary": "Regional transit authority warns of significant service reductions without new state funding by fiscal year end.",
+      "author": "Paul Nussbaum",
+      "section": "News",
+      "topics": ["SEPTA", "Transit", "Philadelphia", "Budget"],
+      "published_at": "2026-03-07T14:00:00-05:00",
+      "updated_at": "2026-03-07T14:00:00-05:00",
+      "canonical_url": "https://www.inquirer.com/transportation/septa-budget-crisis-2026.html",
+      "access": "subscriber",
+      "source": "staff",
+      "content_type": "article",
+      "image_url": "https://www.inquirer.com/resizer/def456.jpg"
+    }
+  ]
+}
