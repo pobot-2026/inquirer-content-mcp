@@ -358,11 +358,11 @@ export class ArcContentService implements ContentService {
     limit: number;
     cursor?: string;
   }): Promise<{ articles: Article[]; next_cursor: string | null }> {
-    // Build query for latest news
-    let query = "type:story";
+    // Build query for latest news - use * for all, filter by type
+    let query = "*";
     
     if (params.section) {
-      query += ` AND taxonomy.primary_section._id:"/${params.section.toLowerCase()}"`;
+      query = `taxonomy.primary_section._id:"/${params.section.toLowerCase()}"`;
     }
     
     const from = params.cursor ? parseInt(params.cursor, 10) : 0;
