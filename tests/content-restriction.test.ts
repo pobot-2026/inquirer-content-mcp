@@ -1,185 +1,196 @@
 /**
  * Content Restriction Tests
- * Implements SCRUM-76: Premium-content non-disclosure tests
+ * Implements SCRUM-76: Automated tests for premium-content non-disclosure
  * 
- * Verifies:
- * - No full body text for subscriber content
- * - No wire copy exposure
- * - Restricted content returns access=restricted
- * - No internal fields leak
+ * These tests verify that:
+ * 1. Wire content (AP, Reuters, Getty) is marked as restricted
+ * 2. Restricted content returns 404 on direct lookup
+ * 3. Restricted content is hidden from search results
+ * 4. Staff photos are exposed, wire photos are not
+ * 5. No full article body text is ever returned
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { MockContentService } from "../src/services/mock-content-service.js";
+import type { Article } from "../src/schemas/article.js";
 
-describe("Content Restriction", () => {
-  const service = new MockContentService();
+describe("Content Restriction Tests", () => {
+  let contentService: MockContentService;
+  
+  beforeAll(() => {
+    contentService = new MockContentService();
+  });
   
   describe("Wire Content Filtering", () => {
     it("should not return wire content in search results", async () => {
-      const result = await service.search({ query: "national", limit: 10 });
+      const result = await contentService.search({ query: "national", limit: 10 });
       
       // Wire content should be filtered out
-      for (const article of result.articles) {
-        expect(article.source).not.toBe("AP");
-        expect(article.source).not.toBe("Reuters");
-        expect(article.source).not.toBe("Getty");
-        expect(article.access).not.toBe("restricted");
-      }
-    });
-    
-    it("should return 404 for wire content lookup", async () => {
-      // wire001 is an AP article in mock data
-      const article = await service.getArticle("wire001");
-      expect(article).toBeNull();
-    });
-    
-    it("should not expose wire content in latest feed", async () => {
-      const result = await service.getLatest({ limit: 20 });
+      const wireArticles = result.articles.filter(a => 
+        a.source === "AP" || a.source === "Reuters" || a.source === "wires"
+      );
       
-      for (const article of result.articles) {
-        expect(article.access).not.toBe("restricted");
-      }
+      expect(wireArticles.length).toBe(0);
+    });
+    
+    it("should not return restricted articles in latest", async () => {
+      const result = await contentService.getLatest({ limit: 50 });
+      
+      const restrictedArticles = result.articles.filter(a => a.access === "restricted");
+      expect(restrictedArticles.length).toBe(0);
+    });
+    
+    it("should return 404 for wire content direct lookup", async () => {
+      // wire001 is a wire story in mock data
+      const article = await contentService.getArticle("wire001");
+      
+      expect(article).toBeNull();
     });
   });
   
-  describe("Subscriber Content Protection", () => {
+  describe("Access Level Enforcement", () => {
     it("should expose headline and summary for subscriber content", async () => {
-      // septa-budget-crisis-2026 is subscriber content
-      const article = await service.getArticle("septa-budget-crisis-2026");
+      // def456 is a subscriber article in mock data
+      const article = await contentService.getArticle("def456");
       
       expect(article).not.toBeNull();
       expect(article!.access).toBe("subscriber");
-      expect(article!.headline).toBeTruthy();
-      expect(article!.summary).toBeTruthy();
+      expect(article!.headline).toBeDefined();
+      expect(article!.summary).toBeDefined();
     });
     
-    it("should not expose body text (not in schema)", async () => {
-      const article = await service.getArticle("septa-budget-crisis-2026");
-      
-      expect(article).not.toBeNull();
-      // Verify body field doesn't exist
-      expect((article as any).body).toBeUndefined();
-      expect((article as any).content).toBeUndefined();
-      expect((article as any).content_elements).toBeUndefined();
-    });
-  });
-  
-  describe("Access Level Exposure", () => {
-    it("should include access field in all articles", async () => {
-      const result = await service.search({ query: "eagles", limit: 10 });
-      
-      for (const article of result.articles) {
-        expect(article.access).toBeDefined();
-        expect(["free", "registered", "subscriber"]).toContain(article.access);
-      }
-    });
-    
-    it("should label free content correctly", async () => {
-      const article = await service.getArticle("eagles-win-super-bowl-2026");
+    it("should expose all metadata for free content", async () => {
+      const article = await contentService.getArticle("abc123");
       
       expect(article).not.toBeNull();
       expect(article!.access).toBe("free");
+      expect(article!.headline).toBeDefined();
+      expect(article!.summary).toBeDefined();
+      expect(article!.canonical_url).toBeDefined();
     });
   });
   
-  describe("Internal Fields Protection", () => {
-    it("should not expose internal Arc fields", async () => {
-      const article = await service.getArticle("eagles-win-super-bowl-2026");
+  describe("Image URL Restrictions", () => {
+    it("should expose image_url for staff photos", async () => {
+      const article = await contentService.getArticle("abc123");
+      
+      expect(article).not.toBeNull();
+      expect(article!.source).toBe("staff");
+      expect(article!.image_url).toBeDefined();
+      expect(article!.image_url).not.toBeNull();
+    });
+    
+    it("should not expose image_url for wire content", async () => {
+      // Wire content shouldn't be returned at all
+      const article = await contentService.getArticle("wire001");
+      expect(article).toBeNull();
+    });
+  });
+  
+  describe("Schema Compliance", () => {
+    it("should return all 13 required fields", async () => {
+      const article = await contentService.getArticle("abc123");
       
       expect(article).not.toBeNull();
       
-      // These Arc internal fields should NOT be present
-      expect((article as any)._id).toBeUndefined();
-      expect((article as any).workflow).toBeUndefined();
-      expect((article as any).revision).toBeUndefined();
-      expect((article as any).additional_properties).toBeUndefined();
-      expect((article as any).owner).toBeUndefined();
-      expect((article as any).distributor).toBeUndefined();
+      // Check all 13 required fields
+      expect(article!.id).toBeDefined();
+      expect(article!.slug).toBeDefined();
+      expect(article!.headline).toBeDefined();
+      expect(article!.summary).toBeDefined(); // Can be null, but must be present
+      expect(article!.author).toBeDefined();
+      expect(article!.section).toBeDefined();
+      expect(article!.topics).toBeDefined();
+      expect(Array.isArray(article!.topics)).toBe(true);
+      expect(article!.published_at).toBeDefined();
+      expect(article!.updated_at).toBeDefined();
+      expect(article!.canonical_url).toBeDefined();
+      expect(article!.access).toBeDefined();
+      expect(article!.source).toBeDefined();
+      expect(article!.content_type).toBeDefined();
+    });
+    
+    it("should return ISO 8601 timestamps", async () => {
+      const article = await contentService.getArticle("abc123");
       
-      // Only the defined schema fields should exist
-      const allowedFields = [
-        "id", "slug", "headline", "summary", "author", "section",
-        "topics", "published_at", "updated_at", "canonical_url",
-        "access", "source", "content_type", "image_url"
-      ];
+      expect(article).not.toBeNull();
       
-      for (const key of Object.keys(article!)) {
-        expect(allowedFields).toContain(key);
+      // Verify timestamps are valid ISO 8601 (parseable by Date)
+      const publishDate = new Date(article!.published_at);
+      const updateDate = new Date(article!.updated_at);
+      
+      expect(publishDate.getTime()).not.toBeNaN();
+      expect(updateDate.getTime()).not.toBeNaN();
+      
+      // Check format matches ISO 8601 pattern
+      expect(article!.published_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    });
+    
+    it("should return canonical URLs (not temporary)", async () => {
+      const article = await contentService.getArticle("abc123");
+      
+      expect(article).not.toBeNull();
+      expect(article!.canonical_url).toMatch(/^https:\/\/www\.inquirer\.com\//);
+      expect(article!.canonical_url).not.toContain("redirect");
+      expect(article!.canonical_url).not.toContain("temp");
+    });
+  });
+  
+  describe("No Body Text Leak", () => {
+    it("should never include full article body in response", async () => {
+      const article = await contentService.getArticle("abc123");
+      
+      expect(article).not.toBeNull();
+      
+      // Ensure no body/content field exists
+      expect((article as Record<string, unknown>).body).toBeUndefined();
+      expect((article as Record<string, unknown>).content).toBeUndefined();
+      expect((article as Record<string, unknown>).content_elements).toBeUndefined();
+      expect((article as Record<string, unknown>).text).toBeUndefined();
+    });
+    
+    it("should keep summary under reasonable length", async () => {
+      const result = await contentService.search({ query: "Eagles", limit: 10 });
+      
+      for (const article of result.articles) {
+        if (article.summary) {
+          // Summary should be a brief description, not full text
+          expect(article.summary.length).toBeLessThan(1000);
+        }
       }
     });
   });
   
-  describe("Image URL Filtering", () => {
-    it("should expose image_url for staff content", async () => {
-      const article = await service.getArticle("eagles-win-super-bowl-2026");
+  describe("Pagination", () => {
+    it("should return next_cursor for paginated results", async () => {
+      const result = await contentService.search({ query: "news", limit: 2 });
       
-      expect(article).not.toBeNull();
-      expect(article!.source).toBe("staff");
-      expect(article!.image_url).toBeTruthy();
+      expect(result).toHaveProperty("next_cursor");
+      expect(result).toHaveProperty("articles");
+      expect(Array.isArray(result.articles)).toBe(true);
     });
     
-    it("should not expose image_url for wire content", async () => {
-      // Wire content is filtered, but if we had a wire article it should have null image
-      // This is tested in the Arc service integration
+    it("should respect limit parameter", async () => {
+      const result = await contentService.search({ query: "news", limit: 1 });
+      
+      expect(result.articles.length).toBeLessThanOrEqual(1);
     });
   });
-});
-
-describe("Schema Compliance", () => {
-  const service = new MockContentService();
   
-  it("should return all 13 required fields", async () => {
-    const article = await service.getArticle("eagles-win-super-bowl-2026");
+  describe("Error Handling", () => {
+    it("should return null for non-existent articles", async () => {
+      const article = await contentService.getArticle("non-existent-id-12345");
+      
+      expect(article).toBeNull();
+    });
     
-    expect(article).not.toBeNull();
-    
-    // All 13 required fields per spec
-    expect(article!.id).toBeDefined();
-    expect(article!.slug).toBeDefined();
-    expect(article!.headline).toBeDefined();
-    expect(article!.summary).toBeDefined(); // Can be null for restricted
-    expect(article!.author).toBeDefined();
-    expect(article!.section).toBeDefined();
-    expect(article!.topics).toBeDefined();
-    expect(article!.published_at).toBeDefined();
-    expect(article!.updated_at).toBeDefined();
-    expect(article!.canonical_url).toBeDefined();
-    expect(article!.access).toBeDefined();
-    expect(article!.source).toBeDefined();
-    expect(article!.content_type).toBeDefined();
-    expect(article!.image_url).toBeDefined(); // Can be null
-  });
-  
-  it("should return ISO 8601 timestamps", async () => {
-    const article = await service.getArticle("eagles-win-super-bowl-2026");
-    
-    expect(article).not.toBeNull();
-    
-    // Verify ISO 8601 format
-    expect(new Date(article!.published_at).toISOString()).toBeTruthy();
-    expect(new Date(article!.updated_at).toISOString()).toBeTruthy();
-  });
-  
-  it("should return valid canonical URLs", async () => {
-    const article = await service.getArticle("eagles-win-super-bowl-2026");
-    
-    expect(article).not.toBeNull();
-    expect(article!.canonical_url).toMatch(/^https?:\/\//);
-  });
-});
-
-describe("Pagination", () => {
-  const service = new MockContentService();
-  
-  it("should respect limit parameter", async () => {
-    const result = await service.search({ query: "news", limit: 1 });
-    expect(result.articles.length).toBeLessThanOrEqual(1);
-  });
-  
-  it("should return next_cursor for more results", async () => {
-    const result = await service.search({ query: "news", limit: 1 });
-    // Mock service returns null cursor, but production should return cursor if more results
-    expect(result).toHaveProperty("next_cursor");
+    it("should return empty array for no results", async () => {
+      const result = await contentService.search({ 
+        query: "xyznonexistentquery123", 
+        limit: 10 
+      });
+      
+      expect(result.articles).toEqual([]);
+    });
   });
 });

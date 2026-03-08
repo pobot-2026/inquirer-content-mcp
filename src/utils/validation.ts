@@ -88,6 +88,11 @@ export function validateArticleId(idOrSlug: string): string {
     throw new ValidationError("Article ID cannot be empty");
   }
   
+  // Block path traversal attempts
+  if (sanitized.includes("..") || sanitized.includes("//")) {
+    throw new ValidationError("Invalid article ID format");
+  }
+  
   // Arc IDs are typically uppercase alphanumeric
   // Slugs can contain lowercase, numbers, hyphens
   if (!/^[a-zA-Z0-9\-_\/\.]+$/.test(sanitized)) {
