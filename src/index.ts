@@ -7,6 +7,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { MockContentService } from "./services/mock-content-service.js";
+import { createArcContentService } from "./services/arc-content-service.js";
 import {
   SearchArticlesParams,
   GetArticleParams,
@@ -35,8 +36,25 @@ const server = new Server(
   }
 );
 
-// Initialize content service (swap for real implementation in production)
-const contentService: ContentService = new MockContentService();
+/**
+ * Initialize content service
+ * Use Arc XP if credentials are available, otherwise fall back to mock
+ */
+function initContentService(): ContentService {
+  try {
+    if (process.env.PMN_SANDBOX_CONTENT_API) {
+      console.error("Using Arc XP Content API");
+      return createArcContentService();
+    }
+  } catch (error) {
+    console.error("Failed to initialize Arc service, falling back to mock:", error);
+  }
+  
+  console.error("Using mock content service");
+  return new MockContentService();
+}
+
+const contentService: ContentService = initContentService();
 
 /**
  * List available tools
@@ -51,9 +69,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           type: "object",
           properties: {
             query: { type: "string", description: "Search query string" },
-            section: { type: "string", description: "Filter by section" },
-            topic: { type: "string", description: "Filter by topic" },
-            region: { type: "string", description: "Filter by region" },
+            section: { type: "string", description: "Filter by section (e.g., 'news', 'sports', 'food')" },
+            topic: { type: "string", description: "Filter by topic (e.g., 'Eagles', 'SEPTA')" },
+            region: { type: "string", description: "Filter by region (e.g., 'philadelphia', 'new-jersey')" },
             from_date: { type: "string", description: "Start date (ISO 8601)" },
             to_date: { type: "string", description: "End date (ISO 8601)" },
             limit: { type: "number", description: "Results per page (1-50)", default: 10 },
@@ -79,7 +97,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: "object",
           properties: {
-            section: { type: "string", description: "Filter by section" },
+            section: { type: "string", description: "Filter by section (e.g., 'news', 'sports', 'food')" },
             region: { type: "string", description: "Filter by region" },
             limit: { type: "number", description: "Results per page (1-50)", default: 10 },
             cursor: { type: "string", description: "Pagination cursor" }
@@ -88,7 +106,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "get_topic_news",
-        description: "Get recent coverage for a specific topic",
+        description: "Get recent coverage for a specific topic (e.g., 'Eagles', 'SEPTA', 'cheesesteaks')",
         inputSchema: {
           type: "object",
           properties: {
